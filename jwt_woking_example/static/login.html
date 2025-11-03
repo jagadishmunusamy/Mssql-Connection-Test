@@ -1,0 +1,52 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Login</title>
+  <style>
+    body { font-family: system-ui, Arial; margin: 2rem; }
+    input, button { padding: .5rem; margin:.25rem 0; }
+    .log { white-space: pre-wrap; background:#fafafa; border:1px solid #eee; padding:.75rem; border-radius:6px; min-height:60px }
+  </style>
+</head>
+<body>
+  <h1>Login</h1>
+  <div>
+    <label>Username</label><br>
+    <input id="username" value="demo">
+  </div>
+  <div>
+    <label>Password</label><br>
+    <input id="password" value="demo">
+  </div>
+  <div><button id="btnLogin">Login</button></div>
+  <div class="log" id="log"></div>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const log = (m) => $("log").textContent += m + "\n";
+
+    document.getElementById("btnLogin").addEventListener("click", async () => {
+      $("log").textContent = "";
+      const username = $("username").value.trim();
+      const password = $("password").value.trim();
+
+      const res = await fetch("/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",                 // set refresh cookie
+        body: JSON.stringify({ username, password })
+      });
+
+      const data = await res.json();
+      if (!data.ok) { log("Login failed"); return; }
+
+      // Persist access token across redirect (sessionStorage is enough)
+      sessionStorage.setItem("access_token", data.access_token);
+
+      // Redirect to protected page
+      window.location.href = "/dashboard";
+    });
+  </script>
+</body>
+</html>

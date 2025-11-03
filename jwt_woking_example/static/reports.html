@@ -1,0 +1,106 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Reports</title>
+  <style>
+    body { font-family: system-ui, Arial; margin: 2rem; }
+    code { background:#f5f5f5; padding:.25rem .5rem; }
+    button { padding:.5rem; }
+    .log { white-space: pre-wrap; background:#fafafa; border:1px solid #eee; padding:.75rem; border-radius:6px; min-height:120px }
+  </style>
+</head>
+<body>
+  <h1>Reports (Protected Page)</h1>
+  <p>Access token: <code id="tok">(none)</code></p>
+  <p>
+    <button id="btnFetchReport">Fetch Report</button>
+    <button id="btnBack">Back to Dashboard</button>
+  </p>
+  <div class="log" id="log"></div>
+
+  <script>
+    let accessToken = sessionStorage.getItem("access_token") || null;
+    const $ = (id) => document.getElementById(id);
+    const log = (m) => $("log").textContent += m + "\n";
+    const showTok = () => $("tok").textContent = accessToken ? (accessToken.slice(0, 24) + "…") : "(none)";
+
+    // 👇 Same fetchWithRefresh logic reused here
+    async function fetchWithRefresh(input, init = {}) {
+      const headers = new Headers(init.headers || {});
+      if (accessToken) headers.set("Authorization", `Bearer ${accessToken}`);
+      let res = await fetch(input, { ...init, headers, credentials: "include" });
+
+      if (res.status !== 401) return res;
+
+      log("Access expired → refreshing…");
+      const r = await fetch("/auth/refresh", { method: "POST", credentials: "include" });
+      if (!r.ok) {
+        log("Refresh failed → going back to login");
+        sessionStorage.removeItem("access_token");
+        window.location.href = "/";
+        return res;
+      }
+      const data = await r.json();
+      if (!(data.ok && data.access_token)) {
+        log("Invalid refresh → login again");
+        sessionStorage.removeItem("access_token");
+        window.location.href = "/";
+        return res;
+      }
+
+      accessToken = data.access_token;
+      sessionStorage.setItem("access_token", accessToken);
+      showTok();
+      log("Got new access token → retrying request…");
+      const retryHeaders = new Headers(init.headers || {});
+      retryHeaders.set("Authorization", `Bearer ${accessToken}`);
+      return fetch(input, { ...init, headers: retryHeaders, credentials: "include" });
+    }
+
+    // 👇 Bootstrap same as dashboard
+    (async function bootstrap() {
+      showTok();
+      if (!accessToken) {
+        const r = await fetch("/auth/refresh", { method: "POST", credentials: "include" });
+        if (r.ok) {
+          const data = await r.json();
+          if (data.ok && data.access_token) {
+            accessToken = data.access_token;
+            sessionStorage.setItem("access_token", accessToken);
+            showTok();
+            log("Bootstrapped access token from refresh cookie.");
+          }
+        } else {
+          log("No refresh cookie. Redirecting to login.");
+          window.location.href = "/";
+          return;
+        }
+      }
+
+      // Optional auto-poll to see refresh working
+      setInterval(async () => {
+        const res = await fetchWithRefresh("/api/hello");
+        if (res.ok) {
+          const j = await res.json();
+          log("Report ping: " + j.message);
+        }
+      }, 7000);
+    })();
+
+    $("btnFetchReport").addEventListener("click", async () => {
+      const res = await fetchWithRefresh("/api/hello");
+      if (res.ok) {
+        const j = await res.json();
+        log("Report fetched: " + j.message);
+      } else {
+        log("Error fetching report");
+      }
+    });
+
+    $("btnBack").addEventListener("click", () => {
+      window.location.href = "/dashboard";
+    });
+  </script>
+</body>
+</html>
